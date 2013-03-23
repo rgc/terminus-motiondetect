@@ -11,6 +11,9 @@ import org.opencv.core.Core;
 import org.opencv.core.Mat;
 import org.opencv.core.MatOfPoint;
 import org.opencv.core.Scalar;
+import org.opencv.core.Rect;
+import org.opencv.core.Size;
+
 import org.opencv.android.CameraBridgeViewBase;
 import org.opencv.android.CameraBridgeViewBase.CvCameraViewListener2;
 
@@ -30,6 +33,7 @@ public class TerminusMotionActivity extends Activity implements CvCameraViewList
 
     double learningRate;   
     private BackgroundSubtractorMOG mogBgSub;
+    
     private Mat mGray;
     private Mat mRgba;
 	private Mat mRgb;
@@ -37,6 +41,7 @@ public class TerminusMotionActivity extends Activity implements CvCameraViewList
 	private Mat mHierarchy;
 	private List<MatOfPoint> contours;
 	private Scalar CONTOUR_COLOR;
+	private Size ksize;
     
     private BaseLoaderCallback mLoaderCallback = new BaseLoaderCallback(this) {
         @Override
@@ -49,12 +54,19 @@ public class TerminusMotionActivity extends Activity implements CvCameraViewList
                  
                     // for background removal...
                     // need to tweak these
-                    learningRate 	= .05;
+                  //learningRate 	= .05;
+                    learningRate	= .1;
+                  //mogBgSub 		= new BackgroundSubtractorMOG();
                     mogBgSub 		= new BackgroundSubtractorMOG(3, 4, 0.8);
+                        
+                    // try backgroundsubtractormog2 ?
                     
+                    mGray 			= new Mat();
                     mRgba 			= new Mat();
                     mRgb 			= new Mat();
                     mFGMask			= new Mat();
+                    
+                    ksize			= new Size(25,25);
                     
                     // for contours
                     mHierarchy  	= new Mat();
@@ -83,8 +95,12 @@ public class TerminusMotionActivity extends Activity implements CvCameraViewList
 
         setContentView(R.layout.motiondetect_surface_view);
 
-        mOpenCvCameraView = (CameraBridgeViewBase) findViewById(R.id.motiondetect_activity_java_surface_view);
+        //mOpenCvCameraView = (CameraBridgeViewBase) findViewById(R.id.motiondetect_activity_java_surface_view);
+        
+        // native camera is slightly faster...
+        mOpenCvCameraView = (CameraBridgeViewBase) findViewById(R.id.motiondetect_activity_native_surface_view);
 
+        
         mOpenCvCameraView.setVisibility(SurfaceView.VISIBLE);
 
         mOpenCvCameraView.setCvCameraViewListener(this);
@@ -120,35 +136,51 @@ public class TerminusMotionActivity extends Activity implements CvCameraViewList
 
     public Mat onCameraFrame(CvCameraViewFrame inputFrame) {
     	
+		mRgba = inputFrame.rgba();
+    	mGray = inputFrame.gray();
+    	
+    	// 6.2 fps here
+    	
     	// ********* background subtraction **********
+    	
     	// the apply function will throw an error if you don't feed it an RGB image
     	// but it exports a gray image, so we need to convert the gray MAT
     	// into RGB before we apply it to the foreground mask
-        Imgproc.cvtColor(inputFrame.gray(), mRgb, Imgproc.COLOR_GRAY2RGB);
-
+        Imgproc.cvtColor(mGray, mRgb, Imgproc.COLOR_GRAY2RGB);
+        // 5.2 fps here
+        
+        
         //apply() exports a gray image by definition
 		mogBgSub.apply(mRgb, mFGMask, learningRate);
+		
+		// 0.27 fps here, ugh.
+				
+		// blur the fgmask to reduce the number of contours
+        Imgproc.GaussianBlur(mFGMask, mFGMask, ksize, 0);
+		
+		// debug
+		//if(true) return mRgb;
+		//if(true) return mFGMask;
 		
 		// re-init or the old contours will stay on screen 
 		contours = new ArrayList<MatOfPoint>();
 		
 		Imgproc.findContours(mFGMask, contours, mHierarchy, Imgproc.RETR_EXTERNAL, Imgproc.CHAIN_APPROX_SIMPLE);
 		
-		mRgba = inputFrame.rgba();
-		
-		// will draw the outlines on the regions...
+		// will draw the outlines on the regions - debug
 		//Imgproc.drawContours(mRgba, contours, -1, CONTOUR_COLOR);
 		
+		Rect r;
 		for (int i = 0; i < contours.size(); i++) {
-			// more efficient - how can i do this?
-			//Rect r = Imgproc.boundingRect(contours.get(i));
-			Core.rectangle(mRgba, Imgproc.boundingRect(contours.get(i)).tl(), Imgproc.boundingRect(contours.get(i)).br(), CONTOUR_COLOR, 3);
+			r = Imgproc.boundingRect(contours.get(i));
+			// if bounding rect larger than min area, draw rect on screen
+			if(r.area()>1200) {
+				Core.rectangle(mRgba, r.tl(), r.br(), CONTOUR_COLOR, 3);
+			}
 		}
 		
-		// to show the undelying mask for tuning...
-		//return mFGMask;
-		
-        return mRgba;
+		return mRgba;
+        
     }
     
     public native void FindFeatures(long matAddrGr, long matAddrRgba);
