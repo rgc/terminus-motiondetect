@@ -99,11 +99,13 @@ public class TerminusMotionActivity extends Activity implements CvCameraViewList
         
         // native camera is slightly faster...
         mOpenCvCameraView = (CameraBridgeViewBase) findViewById(R.id.motiondetect_activity_native_surface_view);
-
         
         mOpenCvCameraView.setVisibility(SurfaceView.VISIBLE);
 
         mOpenCvCameraView.setCvCameraViewListener(this);
+        
+        mOpenCvCameraView.setMaxFrameSize(800, 800);  
+
         
     }
 
@@ -175,6 +177,7 @@ public class TerminusMotionActivity extends Activity implements CvCameraViewList
 			r = Imgproc.boundingRect(contours.get(i));
 			// if bounding rect larger than min area, draw rect on screen
 			if(r.area()>1200) {
+				// we have motion!
 				Core.rectangle(mRgba, r.tl(), r.br(), CONTOUR_COLOR, 3);
 			}
 		}
